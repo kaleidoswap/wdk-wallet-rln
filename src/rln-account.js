@@ -14,19 +14,26 @@
 
 'use strict'
 
+import { HttpClient } from 'kaleido-sdk'
+import { RlnClient } from 'kaleido-sdk/rln'
+
 /**
  * WDK-compatible account that wraps an RGB Lightning Node (RLN) HTTP API.
  *
  * Implements the core `IWalletAccount` interface (getAddress, getBalance,
  * getTokenBalance, transfer) and exposes the full RLN surface for invoices,
  * payments, channels, and asset operations.
+ *
+ * Delegates all HTTP calls to `RlnClient` from the kaleido-sdk.
  */
 export class RlnAccount {
   /**
    * @param {string} nodeUrl - Base URL of the RLN HTTP API (e.g. 'http://localhost:3001')
    */
   constructor (nodeUrl) {
-    this._nodeUrl = nodeUrl.replace(/\/$/, '')
+    const url = nodeUrl.replace(/\/$/, '')
+    const http = new HttpClient({ nodeUrl: url })
+    this._rln = new RlnClient(http)
     /** @private {null | { publicKey: Uint8Array, privateKey: null }} */
     this._keyPairCache = null
   }
@@ -41,7 +48,7 @@ export class RlnAccount {
    * @returns {Promise<string>}
    */
   async getAddress () {
-    const res = await this._request('POST', '/address')
+    const res = await this._rln.getAddress()
     return res.address
   }
 
@@ -51,7 +58,7 @@ export class RlnAccount {
    * @returns {Promise<bigint>}
    */
   async getBalance () {
-    const res = await this._request('POST', '/btcbalance', { skip_sync: false })
+    const res = await this._rln.getBtcBalance(false)
     return BigInt(res.vanilla?.spendable ?? 0)
   }
 
@@ -62,7 +69,7 @@ export class RlnAccount {
    * @returns {Promise<bigint>}
    */
   async getTokenBalance (assetId) {
-    const res = await this._request('POST', '/assetbalance', { asset_id: assetId })
+    const res = await this._rln.getAssetBalance({ asset_id: assetId })
     return BigInt(res.spendable ?? 0)
   }
 
@@ -73,11 +80,7 @@ export class RlnAccount {
    * @returns {Promise<{ hash: string, fee: bigint }>}
    */
   async transfer ({ recipient, amount, feeRate = 3 }) {
-    await this._request('POST', '/sendbtc', {
-      address: recipient,
-      amount: Number(amount),
-      fee_rate: feeRate
-    })
+    await this._rln.sendBtc({ address: recipient, amount: Number(amount), fee_rate: feeRate })
     // sendbtc returns no txid — callers can use listTransactions() to confirm
     return { hash: '', fee: BigInt(0) }
   }
@@ -107,7 +110,7 @@ export class RlnAccount {
    * @returns {Promise<import('../types/index.d.ts').RlnNodeInfo>}
    */
   async getNodeInfo () {
-    const info = await this._request('GET', '/nodeinfo')
+    const info = await this._rln.getNodeInfo()
     if (!this._keyPairCache && info.pubkey) {
       this._keyPairCache = {
         publicKey: hexToBytes(info.pubkey),
@@ -123,7 +126,7 @@ export class RlnAccount {
    * @returns {Promise<object>}
    */
   async getNetworkInfo () {
-    return this._request('GET', '/networkinfo')
+    return this._rln.getNetworkInfo()
   }
 
   // ---------------------------------------------------------------------------
@@ -137,7 +140,7 @@ export class RlnAccount {
    * @returns {Promise<{ vanilla: { settled: number, future: number, spendable: number }, colored: { settled: number, future: number, spendable: number } }>}
    */
   async getBtcBalance ({ skipSync = false } = {}) {
-    return this._request('POST', '/btcbalance', { skip_sync: skipSync })
+    return this._rln.getBtcBalance(skipSync)
   }
 
   /**
@@ -146,7 +149,7 @@ export class RlnAccount {
    * @param {{ address: string, amount: number, feeRate: number }} options
    */
   async sendBtc ({ address, amount, feeRate = 3 }) {
-    return this._request('POST', '/sendbtc', { address, amount, fee_rate: feeRate })
+    return this._rln.sendBtc({ address, amount, fee_rate: feeRate })
   }
 
   /**
@@ -156,7 +159,7 @@ export class RlnAccount {
    * @returns {Promise<{ transactions: object[] }>}
    */
   async listTransactions ({ skipSync = false } = {}) {
-    return this._request('POST', '/listtransactions', { skip_sync: skipSync })
+    return this._rln.listTransactions({ skip_sync: skipSync })
   }
 
   /**
@@ -165,7 +168,7 @@ export class RlnAccount {
    * @returns {Promise<{ unspents: object[] }>}
    */
   async listUnspents () {
-    return this._request('POST', '/listunspents', { skip_sync: false })
+    return this._rln.listUnspents()
   }
 
   /**
@@ -174,7 +177,7 @@ export class RlnAccount {
    * @param {{ up_to?: boolean, num?: number, size?: number, fee_rate?: number, skip_sync?: boolean }} options
    */
   async createUtxos (options = {}) {
-    return this._request('POST', '/createutxos', options)
+    return this._rln.createUtxos(options)
   }
 
   /**
@@ -184,7 +187,7 @@ export class RlnAccount {
    * @returns {Promise<{ fee_rate: number }>}
    */
   async estimateFee ({ blocks = 6 } = {}) {
-    return this._request('POST', '/estimatefee', { blocks })
+    return this._rln.estimateFee({ blocks })
   }
 
   // ---------------------------------------------------------------------------
@@ -198,7 +201,7 @@ export class RlnAccount {
    * @returns {Promise<{ nia: object[], uda: object[], cfa: object[] }>}
    */
   async listAssets (filterSchemas = []) {
-    return this._request('POST', '/listassets', { filter_asset_schemas: filterSchemas })
+    return this._rln.listAssets(filterSchemas)
   }
 
   /**
@@ -208,7 +211,7 @@ export class RlnAccount {
    * @returns {Promise<{ settled: number, future: number, spendable: number, offchain_outbound: number, offchain_inbound: number }>}
    */
   async getAssetBalance (assetId) {
-    return this._request('POST', '/assetbalance', { asset_id: assetId })
+    return this._rln.getAssetBalance({ asset_id: assetId })
   }
 
   /**
@@ -218,7 +221,7 @@ export class RlnAccount {
    * @returns {Promise<object>}
    */
   async getAssetMetadata (assetId) {
-    return this._request('POST', '/assetmetadata', { asset_id: assetId })
+    return this._rln.getAssetMetadata({ asset_id: assetId })
   }
 
   /**
@@ -228,7 +231,7 @@ export class RlnAccount {
    * @returns {Promise<{ txid: string }>}
    */
   async sendRgb ({ recipientMap, feeRate = 3, donation = false, minConfirmations = 1 }) {
-    return this._request('POST', '/sendrgb', {
+    return this._rln.sendRgb({
       recipient_map: recipientMap,
       fee_rate: feeRate,
       donation,
@@ -243,7 +246,7 @@ export class RlnAccount {
    * @returns {Promise<{ transfers: object[] }>}
    */
   async listTransfers (assetId) {
-    return this._request('POST', '/listtransfers', { asset_id: assetId })
+    return this._rln.listTransfers({ asset_id: assetId })
   }
 
   /**
@@ -252,7 +255,7 @@ export class RlnAccount {
    * @param {{ skipSync?: boolean }} [options]
    */
   async refreshTransfers ({ skipSync = false } = {}) {
-    return this._request('POST', '/refreshtransfers', { skip_sync: skipSync })
+    return this._rln.refreshTransfers({ skip_sync: skipSync })
   }
 
   // ---------------------------------------------------------------------------
@@ -266,11 +269,7 @@ export class RlnAccount {
    * @returns {Promise<{ invoice: string }>}
    */
   async createLNInvoice ({ amtMsat, description = '', expirySec = 3600 } = {}) {
-    return this._request('POST', '/lninvoice', {
-      amt_msat: amtMsat,
-      description,
-      expiry_sec: expirySec
-    })
+    return this._rln.createLNInvoice({ amt_msat: amtMsat, description, expiry_sec: expirySec })
   }
 
   /**
@@ -288,7 +287,7 @@ export class RlnAccount {
     if (amount !== undefined) {
       body.assignment = { amount }
     }
-    return this._request('POST', '/rgbinvoice', body)
+    return this._rln.createRgbInvoice(body)
   }
 
   /**
@@ -298,7 +297,7 @@ export class RlnAccount {
    * @returns {Promise<{ payment_hash: string, status: string }>}
    */
   async sendPayment ({ invoice }) {
-    return this._request('POST', '/sendpayment', { invoice })
+    return this._rln.sendPayment({ invoice })
   }
 
   /**
@@ -307,7 +306,7 @@ export class RlnAccount {
    * @returns {Promise<{ payments: object[] }>}
    */
   async listPayments () {
-    return this._request('GET', '/listpayments')
+    return this._rln.listPayments()
   }
 
   /**
@@ -317,7 +316,7 @@ export class RlnAccount {
    * @returns {Promise<object>}
    */
   async getInvoiceStatus ({ paymentHash }) {
-    return this._request('POST', '/invoicestatus', { payment_hash: paymentHash })
+    return this._rln.getInvoiceStatus({ invoice: paymentHash })
   }
 
   /**
@@ -327,7 +326,7 @@ export class RlnAccount {
    * @returns {Promise<object>}
    */
   async decodeLNInvoice (invoice) {
-    return this._request('POST', '/decodelninvoice', { invoice })
+    return this._rln.decodeLNInvoice(invoice)
   }
 
   /**
@@ -337,7 +336,7 @@ export class RlnAccount {
    * @returns {Promise<object>}
    */
   async decodeRgbInvoice (invoice) {
-    return this._request('POST', '/decodergbinvoice', { invoice })
+    return this._rln.decodeRgbInvoice({ invoice })
   }
 
   // ---------------------------------------------------------------------------
@@ -350,7 +349,7 @@ export class RlnAccount {
    * @returns {Promise<{ channels: object[] }>}
    */
   async listChannels () {
-    return this._request('GET', '/listchannels')
+    return this._rln.listChannels()
   }
 
   /**
@@ -360,7 +359,7 @@ export class RlnAccount {
    * @returns {Promise<{ temporary_channel_id: string }>}
    */
   async openChannel ({ peerPubkeyAndAddr, capacitySat, pushMsat = 0, assetId, assetAmount, isPublic = false }) {
-    return this._request('POST', '/openchannel', {
+    return this._rln.openChannel({
       peer_pubkey_and_opt_addr: peerPubkeyAndAddr,
       capacity_sat: capacitySat,
       push_msat: pushMsat,
@@ -376,11 +375,7 @@ export class RlnAccount {
    * @param {{ channelId: string, peerPubkey: string, force?: boolean }} options
    */
   async closeChannel ({ channelId, peerPubkey, force = false }) {
-    return this._request('POST', '/closechannel', {
-      channel_id: channelId,
-      peer_pubkey: peerPubkey,
-      force
-    })
+    return this._rln.closeChannel({ channel_id: channelId, peer_pubkey: peerPubkey, force })
   }
 
   /**
@@ -389,7 +384,7 @@ export class RlnAccount {
    * @returns {Promise<{ peers: object[] }>}
    */
   async listPeers () {
-    return this._request('GET', '/listpeers')
+    return this._rln.listPeers()
   }
 
   /**
@@ -399,7 +394,7 @@ export class RlnAccount {
    * @returns {Promise<object>}
    */
   async connectPeer (peerPubkeyAndAddr) {
-    return this._request('POST', '/connectpeer', { peer_pubkey_and_opt_addr: peerPubkeyAndAddr })
+    return this._rln.connectPeer({ peer_pubkey_and_addr: peerPubkeyAndAddr })
   }
 
   /**
@@ -408,32 +403,7 @@ export class RlnAccount {
    * @param {string} peerPubkey
    */
   async disconnectPeer (peerPubkey) {
-    return this._request('POST', '/disconnectpeer', { peer_pubkey: peerPubkey })
-  }
-
-  // ---------------------------------------------------------------------------
-  // Private helpers
-  // ---------------------------------------------------------------------------
-
-  /** @private */
-  async _request (method, path, body) {
-    const url = `${this._nodeUrl}${path}`
-    const opts = { method, headers: { 'Content-Type': 'application/json' } }
-    if (body !== undefined) opts.body = JSON.stringify(body)
-
-    const res = await fetch(url, opts)
-
-    if (!res.ok) {
-      let message = `HTTP ${res.status}`
-      try {
-        const data = JSON.parse(await res.text())
-        message = data?.error || data?.detail || data?.message || message
-      } catch (_) {}
-      throw new Error(`RLN node error: ${message}`)
-    }
-
-    const text = await res.text()
-    return text ? JSON.parse(text) : {}
+    return this._rln.disconnectPeer({ peer_pubkey: peerPubkey })
   }
 }
 

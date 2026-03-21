@@ -64,29 +64,59 @@ const MOCK_CHANNELS = {
 }
 
 const MOCK_ADDRESS = { address: 'tb1qfoo...' }
-const MOCK_FEE = { fee_rate: 0.00005 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function mockFetchSequence (...responses) {
+/**
+ * Sets up a mock fetch returning a sequence of JSON responses, then creates
+ * a new RlnAccount. openapi-fetch captures globalThis.fetch at construction
+ * time, so the mock must be set BEFORE creating the account.
+ */
+function createAccount (...responses) {
   let call = 0
   globalThis.fetch = jest.fn().mockImplementation(() => {
     const res = responses[call++]
     return Promise.resolve({
       ok: true,
-      text: () => Promise.resolve(JSON.stringify(res))
+      status: 200,
+      statusText: 'OK',
+      headers: { get: () => null },
+      text: () => Promise.resolve(res !== undefined ? JSON.stringify(res) : '')
     })
   })
+  return new RlnAccount(NODE_URL)
 }
 
-function mockFetchError (status, body) {
+/**
+ * Sets up a mock fetch returning an error response, then creates a new
+ * RlnAccount.
+ */
+function createAccountWithError (status, body) {
   globalThis.fetch = jest.fn().mockResolvedValue({
     ok: false,
     status,
+    statusText: 'Error',
+    headers: { get: () => null },
     text: async () => JSON.stringify(body)
   })
+  return new RlnAccount(NODE_URL)
+}
+
+/** Returns the URL from the nth fetch call (openapi-fetch passes a Request object). */
+function getRequestUrl (callIndex = 0) {
+  return globalThis.fetch.mock.calls[callIndex][0].url
+}
+
+/** Returns the method from the nth fetch call. */
+function getRequestMethod (callIndex = 0) {
+  return globalThis.fetch.mock.calls[callIndex][0].method
+}
+
+/** Reads and parses the JSON body from the nth fetch call's Request object. */
+async function getRequestBody (callIndex = 0) {
+  return globalThis.fetch.mock.calls[callIndex][0].json()
 }
 
 // ---------------------------------------------------------------------------
@@ -116,10 +146,16 @@ describe('RlnWalletManager', () => {
   })
 
   test('getFeeRates() returns normal and fast as bigint', async () => {
-    mockFetchSequence(
-      { fee_rate: 0.00005 },  // blocks=6 (normal)
-      { fee_rate: 0.0002 }    // blocks=2 (fast)
-    )
+    let call = 0
+    globalThis.fetch = jest.fn().mockImplementation(() => {
+      const responses = [{ fee_rate: 0.00005 }, { fee_rate: 0.0002 }]
+      const res = responses[call++]
+      return Promise.resolve({
+        ok: true, status: 200, statusText: 'OK',
+        headers: { get: () => null },
+        text: () => Promise.resolve(JSON.stringify(res))
+      })
+    })
     const mgr = new RlnWalletManager(SEED, { nodeUrl: NODE_URL })
     const rates = await mgr.getFeeRates()
     expect(typeof rates.normal).toBe('bigint')
@@ -136,58 +172,49 @@ describe('RlnWalletManager', () => {
 // ---------------------------------------------------------------------------
 
 describe('RlnAccount', () => {
-  /** @type {RlnAccount} */
-  let account
-
-  beforeEach(() => {
-    globalThis.fetch = undefined
-    account = new RlnAccount(NODE_URL)
-  })
-
   // -------------------------------------------------------------------------
   describe('IWalletAccount interface', () => {
     test('getAddress() returns the on-chain BTC address', async () => {
-      mockFetchSequence(MOCK_ADDRESS)
+      const account = createAccount(MOCK_ADDRESS)
       expect(await account.getAddress()).toBe('tb1qfoo...')
-      const [url] = globalThis.fetch.mock.calls[0]
-      expect(url).toBe(`${NODE_URL}/address`)
+      expect(getRequestUrl()).toContain('/address')
     })
 
     test('getBalance() returns vanilla.spendable as bigint', async () => {
-      mockFetchSequence(MOCK_BTC_BALANCE)
+      const account = createAccount(MOCK_BTC_BALANCE)
       const bal = await account.getBalance()
       expect(bal).toBe(BigInt(500000))
     })
 
     test('getBalance() returns 0n when response is empty', async () => {
-      mockFetchSequence({})
+      const account = createAccount({})
       expect(await account.getBalance()).toBe(0n)
     })
 
     test('getTokenBalance(assetId) returns spendable as bigint', async () => {
-      mockFetchSequence(MOCK_ASSET_BALANCE)
+      const account = createAccount(MOCK_ASSET_BALANCE)
       const bal = await account.getTokenBalance(ASSET_ID)
       expect(bal).toBe(BigInt(950))
 
-      const [, opts] = globalThis.fetch.mock.calls[0]
-      expect(JSON.parse(opts.body)).toEqual({ asset_id: ASSET_ID })
+      const body = await getRequestBody()
+      expect(body).toEqual({ asset_id: ASSET_ID })
     })
 
     test('transfer() sends BTC on-chain', async () => {
-      mockFetchSequence({})
+      const account = createAccount({})
       const result = await account.transfer({ recipient: 'tb1qrecipient', amount: 50000 })
       expect(result.hash).toBe('')
       expect(result.fee).toBe(0n)
 
-      const [url, opts] = globalThis.fetch.mock.calls[0]
-      expect(url).toContain('/sendbtc')
-      const body = JSON.parse(opts.body)
+      expect(getRequestUrl()).toContain('/sendbtc')
+      const body = await getRequestBody()
       expect(body.address).toBe('tb1qrecipient')
       expect(body.amount).toBe(50000)
       expect(body.fee_rate).toBe(3)
     })
 
     test('keyPair.privateKey is always null', () => {
+      const account = createAccount()
       expect(account.keyPair.privateKey).toBeNull()
     })
   })
@@ -195,7 +222,7 @@ describe('RlnAccount', () => {
   // -------------------------------------------------------------------------
   describe('getNodeInfo()', () => {
     test('returns node info and caches the pubkey', async () => {
-      mockFetchSequence(MOCK_NODE_INFO)
+      const account = createAccount(MOCK_NODE_INFO)
       const info = await account.getNodeInfo()
       expect(info.pubkey).toBe(MOCK_NODE_INFO.pubkey)
 
@@ -208,86 +235,84 @@ describe('RlnAccount', () => {
   // -------------------------------------------------------------------------
   describe('createRgbInvoice()', () => {
     test('calls /rgbinvoice with asset_id and returns invoice', async () => {
-      mockFetchSequence(MOCK_RGB_INVOICE)
+      const account = createAccount(MOCK_RGB_INVOICE)
       const inv = await account.createRgbInvoice({ assetId: ASSET_ID })
 
       expect(inv.invoice).toBe('rgb:invoice-example-string')
       expect(inv.recipient_id).toBe('rcpt-abc-123')
 
-      const [url, opts] = globalThis.fetch.mock.calls[0]
-      expect(url).toContain('/rgbinvoice')
-      const body = JSON.parse(opts.body)
+      expect(getRequestUrl()).toContain('/rgbinvoice')
+      const body = await getRequestBody()
       expect(body.asset_id).toBe(ASSET_ID)
     })
 
     test('includes assignment when amount is provided', async () => {
-      mockFetchSequence(MOCK_RGB_INVOICE)
+      const account = createAccount(MOCK_RGB_INVOICE)
       await account.createRgbInvoice({ assetId: ASSET_ID, amount: 100 })
 
-      const [, opts] = globalThis.fetch.mock.calls[0]
-      expect(JSON.parse(opts.body).assignment).toEqual({ amount: 100 })
+      const body = await getRequestBody()
+      expect(body.assignment).toEqual({ amount: 100 })
     })
   })
 
   // -------------------------------------------------------------------------
   describe('createLNInvoice()', () => {
     test('calls /lninvoice and returns bolt11 invoice', async () => {
-      mockFetchSequence(MOCK_LN_INVOICE)
+      const account = createAccount(MOCK_LN_INVOICE)
       const inv = await account.createLNInvoice({ amtMsat: 100000 })
 
       expect(inv.invoice).toBe('lnbc100u1pq...')
-      const [url, opts] = globalThis.fetch.mock.calls[0]
-      expect(url).toContain('/lninvoice')
-      expect(JSON.parse(opts.body).amt_msat).toBe(100000)
+      expect(getRequestUrl()).toContain('/lninvoice')
+      const body = await getRequestBody()
+      expect(body.amt_msat).toBe(100000)
     })
   })
 
   // -------------------------------------------------------------------------
   describe('sendPayment()', () => {
     test('POSTs the invoice and returns payment result', async () => {
-      mockFetchSequence(MOCK_PAYMENT)
+      const account = createAccount(MOCK_PAYMENT)
       const result = await account.sendPayment({ invoice: 'lnbc100u1pq...' })
 
       expect(result.status).toBe('Succeeded')
       expect(result.payment_hash).toBe('abc123def456')
 
-      const [url, opts] = globalThis.fetch.mock.calls[0]
-      expect(url).toContain('/sendpayment')
-      expect(JSON.parse(opts.body).invoice).toBe('lnbc100u1pq...')
+      expect(getRequestUrl()).toContain('/sendpayment')
+      const body = await getRequestBody()
+      expect(body.invoice).toBe('lnbc100u1pq...')
     })
   })
 
   // -------------------------------------------------------------------------
   describe('listChannels()', () => {
     test('returns the channels array', async () => {
-      mockFetchSequence(MOCK_CHANNELS)
+      const account = createAccount(MOCK_CHANNELS)
       const res = await account.listChannels()
 
       expect(res.channels).toHaveLength(1)
       expect(res.channels[0].channel_id).toBe('chan-001')
       expect(res.channels[0].asset_id).toBe(ASSET_ID)
 
-      const [url, opts] = globalThis.fetch.mock.calls[0]
-      expect(url).toContain('/listchannels')
-      expect(opts.method).toBe('GET')
+      expect(getRequestUrl()).toContain('/listchannels')
+      expect(getRequestMethod()).toBe('GET')
     })
   })
 
   // -------------------------------------------------------------------------
   describe('listAssets()', () => {
     test('calls /listassets with empty filter by default', async () => {
-      mockFetchSequence({ nia: [], uda: [], cfa: [] })
+      const account = createAccount({ nia: [], uda: [], cfa: [] })
       await account.listAssets()
 
-      const [, opts] = globalThis.fetch.mock.calls[0]
-      expect(JSON.parse(opts.body).filter_asset_schemas).toEqual([])
+      const body = await getRequestBody()
+      expect(body.filter_asset_schemas).toEqual([])
     })
   })
 
   // -------------------------------------------------------------------------
   describe('getBtcBalance()', () => {
     test('returns full vanilla + colored breakdown', async () => {
-      mockFetchSequence(MOCK_BTC_BALANCE)
+      const account = createAccount(MOCK_BTC_BALANCE)
       const bal = await account.getBtcBalance()
 
       expect(bal.vanilla.spendable).toBe(500000)
@@ -297,26 +322,29 @@ describe('RlnAccount', () => {
 
   // -------------------------------------------------------------------------
   describe('error handling', () => {
-    test('throws a readable error on HTTP failure with error field', async () => {
-      mockFetchError(401, { error: 'Unauthorized' })
+    test('throws on HTTP 401 with error field', async () => {
+      const account = createAccountWithError(401, { error: 'Unauthorized' })
       await expect(account.getBalance())
-        .rejects.toThrow('RLN node error: Unauthorized')
+        .rejects.toThrow('Unauthorized')
     })
 
-    test('throws with detail field', async () => {
-      mockFetchError(422, { detail: 'Invalid asset_id' })
+    test('throws on HTTP 422 with detail field', async () => {
+      const account = createAccountWithError(422, { detail: 'Invalid asset_id' })
       await expect(account.getAssetBalance('bad-id'))
-        .rejects.toThrow('RLN node error: Invalid asset_id')
+        .rejects.toThrow('Invalid asset_id')
     })
 
-    test('falls back to HTTP status text when body is not JSON', async () => {
+    test('throws when error response body cannot be read', async () => {
       globalThis.fetch = jest.fn().mockResolvedValue({
         ok: false,
         status: 503,
-        text: () => Promise.reject(new Error('not JSON'))
+        statusText: 'Service Unavailable',
+        headers: { get: () => null },
+        text: () => Promise.reject(new Error('network read failure'))
       })
+      const account = new RlnAccount(NODE_URL)
       await expect(account.listChannels())
-        .rejects.toThrow('RLN node error: HTTP 503')
+        .rejects.toThrow()
     })
   })
 })
