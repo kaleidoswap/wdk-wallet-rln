@@ -1,5 +1,5 @@
 {
-  "name": "@kaleidoswap/wdk-wallet-rln",
+  "name": "@kaleidorg/wdk-wallet-rln",
   "version": "1.0.0-beta.2",
   "description": "WDK wallet adapter for an RGB Lightning Node (RLN) — connects an existing RLN HTTP daemon to the WDK account model.",
   "keywords": [
