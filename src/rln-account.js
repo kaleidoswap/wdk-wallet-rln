@@ -1,4 +1,4 @@
-// Copyright 2024 Tether Operations Limited
+// Copyright 2024 KaleidoSwap
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -404,6 +404,40 @@ export class RlnAccount {
    */
   async disconnectPeer (peerPubkey) {
     return this._rln.disconnectPeer({ peer_pubkey: peerPubkey })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Atomic swaps
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Whitelist an incoming HTLC for an atomic swap (taker side).
+   *
+   * @param {string} swapstring - Swapstring from atomic init
+   */
+  async atomicTaker (swapstring) {
+    return this._rln.taker({ swapstring })
+  }
+
+  /**
+   * Lists all atomic swaps on the node.
+   *
+   * @returns {Promise<{ maker: object[], taker: object[] }>}
+   */
+  async listSwaps () {
+    return this._rln.listSwaps()
+  }
+
+  /**
+   * Gets atomic swap status by payment hash.
+   *
+   * @param {{ paymentHash: string, taker?: boolean }} options
+   * @returns {Promise<{ swap?: object }>}
+   */
+  async getSwap ({ paymentHash, taker }) {
+    const body = { payment_hash: paymentHash }
+    if (taker !== undefined) body.taker = taker
+    return this._rln.getSwap(body)
   }
 }
 

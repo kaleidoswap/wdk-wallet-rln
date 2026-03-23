@@ -1,4 +1,4 @@
-// Copyright 2024 Tether Operations Limited
+// Copyright 2024 KaleidoSwap
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -140,6 +140,11 @@ export declare class RlnAccount {
   listPeers(): Promise<{ peers: object[] }>
   connectPeer(peerPubkeyAndAddr: string): Promise<object>
   disconnectPeer(peerPubkey: string): Promise<void>
+
+  // Atomic swaps
+  atomicTaker(swapstring: string): Promise<void>
+  listSwaps(): Promise<{ maker: object[]; taker: object[] }>
+  getSwap(options: { paymentHash: string; taker?: boolean }): Promise<{ swap?: object }>
 }
 
 // ---------------------------------------------------------------------------
