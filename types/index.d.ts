@@ -125,9 +125,9 @@ export declare class RlnAccount {
   refreshTransfers(options?: { skipSync?: boolean }): Promise<void>
 
   // Lightning invoices & payments
-  createLNInvoice(options?: { amtMsat?: number; description?: string; expirySec?: number }): Promise<RlnLNInvoice>
-  createRgbInvoice(options?: { assetId?: string; amount?: number; durationSeconds?: number; minConfirmations?: number }): Promise<RlnRgbInvoice>
-  sendPayment(options: { invoice: string }): Promise<RlnPaymentResult>
+  createLNInvoice(options?: { amtMsat?: number; description?: string; expirySec?: number; assetId?: string; assetAmount?: number }): Promise<RlnLNInvoice>
+  createRgbInvoice(options?: { assetId?: string; amount?: number; durationSeconds?: number; minConfirmations?: number; witness?: boolean }): Promise<RlnRgbInvoice>
+  sendPayment(options: { invoice: string; amtMsat?: number; assetId?: string; assetAmount?: number }): Promise<RlnPaymentResult>
   listPayments(): Promise<{ payments: object[] }>
   getInvoiceStatus(options: { paymentHash: string }): Promise<object>
   decodeLNInvoice(invoice: string): Promise<object>
