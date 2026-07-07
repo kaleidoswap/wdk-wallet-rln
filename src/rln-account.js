@@ -271,8 +271,6 @@ export class RlnAccount {
    */
   async createLNInvoice ({ amtMsat, description = '', expirySec = 3600, assetId, assetAmount } = {}) {
     const body = { amt_msat: amtMsat, description, expiry_sec: expirySec }
-    // RGB-over-Lightning: the node's LNInvoiceRequest carries the asset via
-    // asset_id + asset_amount (raw base units). Only attach them when present.
     if (assetId != null) body.asset_id = assetId
     if (assetAmount != null) body.asset_amount = assetAmount
     return this._rln.createLNInvoice(body)
@@ -285,11 +283,6 @@ export class RlnAccount {
    * @returns {Promise<{ recipient_id: string, invoice: string, expiration_timestamp: number }>}
    */
   async createRgbInvoice ({ assetId, amount, durationSeconds = 86400, minConfirmations = 1, witness = true } = {}) {
-    // The node's RgbInvoiceRequest requires `witness` and `min_confirmations`,
-    // uses an absolute `expiration_timestamp` (not a duration), and an
-    // `Assignment`-typed amount ({ type: 'Fungible', value }). Sending
-    // `duration_seconds` / `{ amount }` / omitting `witness` fails serde with
-    // "Failed to deserialize the JSON body into the target type".
     const body = {
       asset_id: assetId,
       expiration_timestamp: Math.floor(Date.now() / 1000) + durationSeconds,

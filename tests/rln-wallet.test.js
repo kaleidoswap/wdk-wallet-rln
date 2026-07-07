@@ -244,8 +244,6 @@ describe('RlnAccount', () => {
       expect(getRequestUrl()).toContain('/rgbinvoice')
       const body = await getRequestBody()
       expect(body.asset_id).toBe(ASSET_ID)
-      // The node's RgbInvoiceRequest requires `witness` and `min_confirmations`
-      // and an absolute `expiration_timestamp` (not a `duration_seconds`).
       expect(body.witness).toBe(true)
       expect(body.min_confirmations).toBe(1)
       expect(typeof body.expiration_timestamp).toBe('number')
