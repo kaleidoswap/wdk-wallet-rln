@@ -263,41 +263,59 @@ export class RlnAccount {
   // ---------------------------------------------------------------------------
 
   /**
-   * Creates a BOLT11 Lightning invoice for receiving BTC.
+   * Creates a BOLT11 Lightning invoice for receiving BTC, or an RGB asset over
+   * Lightning when `assetId` (and optionally `assetAmount`) are provided.
    *
-   * @param {{ amtMsat?: number, description?: string, expirySec?: number }} options
+   * @param {{ amtMsat?: number, description?: string, expirySec?: number, assetId?: string, assetAmount?: number }} options
    * @returns {Promise<{ invoice: string }>}
    */
-  async createLNInvoice ({ amtMsat, description = '', expirySec = 3600 } = {}) {
-    return this._rln.createLNInvoice({ amt_msat: amtMsat, description, expiry_sec: expirySec })
+  async createLNInvoice ({ amtMsat, description = '', expirySec = 3600, assetId, assetAmount } = {}) {
+    const body = { amt_msat: amtMsat, description, expiry_sec: expirySec }
+    // RGB-over-Lightning: the node's LNInvoiceRequest carries the asset via
+    // asset_id + asset_amount (raw base units). Only attach them when present.
+    if (assetId != null) body.asset_id = assetId
+    if (assetAmount != null) body.asset_amount = assetAmount
+    return this._rln.createLNInvoice(body)
   }
 
   /**
-   * Creates an RGB invoice for receiving assets.
+   * Creates an RGB on-chain invoice for receiving assets (blinded or witness).
    *
-   * @param {{ assetId?: string, amount?: number, durationSeconds?: number, minConfirmations?: number }} options
+   * @param {{ assetId?: string, amount?: number, durationSeconds?: number, minConfirmations?: number, witness?: boolean }} options
    * @returns {Promise<{ recipient_id: string, invoice: string, expiration_timestamp: number }>}
    */
-  async createRgbInvoice ({ assetId, amount, durationSeconds = 86400, minConfirmations = 1 } = {}) {
+  async createRgbInvoice ({ assetId, amount, durationSeconds = 86400, minConfirmations = 1, witness = true } = {}) {
+    // The node's RgbInvoiceRequest requires `witness` and `min_confirmations`,
+    // uses an absolute `expiration_timestamp` (not a duration), and an
+    // `Assignment`-typed amount ({ type: 'Fungible', value }). Sending
+    // `duration_seconds` / `{ amount }` / omitting `witness` fails serde with
+    // "Failed to deserialize the JSON body into the target type".
     const body = {
       asset_id: assetId,
-      duration_seconds: durationSeconds,
-      min_confirmations: minConfirmations
+      expiration_timestamp: Math.floor(Date.now() / 1000) + durationSeconds,
+      min_confirmations: minConfirmations,
+      witness
     }
-    if (amount !== undefined) {
-      body.assignment = { amount }
+    if (amount != null) {
+      body.assignment = { type: 'Fungible', value: amount }
     }
     return this._rln.createRgbInvoice(body)
   }
 
   /**
-   * Sends a Lightning payment.
+   * Sends a Lightning payment. For an open-amount RGB invoice, pass `assetId`
+   * and `assetAmount` (raw base units); for a zero-amount BTC invoice pass
+   * `amtMsat`. Fixed-amount invoices need only `invoice`.
    *
-   * @param {{ invoice: string }} options
+   * @param {{ invoice: string, amtMsat?: number, assetId?: string, assetAmount?: number }} options
    * @returns {Promise<{ payment_hash: string, status: string }>}
    */
-  async sendPayment ({ invoice }) {
-    return this._rln.sendPayment({ invoice })
+  async sendPayment ({ invoice, amtMsat, assetId, assetAmount }) {
+    const body = { invoice }
+    if (amtMsat != null) body.amt_msat = amtMsat
+    if (assetId != null) body.asset_id = assetId
+    if (assetAmount != null) body.asset_amount = assetAmount
+    return this._rln.sendPayment(body)
   }
 
   /**

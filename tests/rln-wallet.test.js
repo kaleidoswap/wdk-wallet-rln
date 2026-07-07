@@ -234,7 +234,7 @@ describe('RlnAccount', () => {
 
   // -------------------------------------------------------------------------
   describe('createRgbInvoice()', () => {
-    test('calls /rgbinvoice with asset_id and returns invoice', async () => {
+    test('calls /rgbinvoice with asset_id and the node-required fields', async () => {
       const account = createAccount(MOCK_RGB_INVOICE)
       const inv = await account.createRgbInvoice({ assetId: ASSET_ID })
 
@@ -244,14 +244,20 @@ describe('RlnAccount', () => {
       expect(getRequestUrl()).toContain('/rgbinvoice')
       const body = await getRequestBody()
       expect(body.asset_id).toBe(ASSET_ID)
+      // The node's RgbInvoiceRequest requires `witness` and `min_confirmations`
+      // and an absolute `expiration_timestamp` (not a `duration_seconds`).
+      expect(body.witness).toBe(true)
+      expect(body.min_confirmations).toBe(1)
+      expect(typeof body.expiration_timestamp).toBe('number')
+      expect(body.duration_seconds).toBeUndefined()
     })
 
-    test('includes assignment when amount is provided', async () => {
+    test('includes a Fungible assignment when amount is provided', async () => {
       const account = createAccount(MOCK_RGB_INVOICE)
       await account.createRgbInvoice({ assetId: ASSET_ID, amount: 100 })
 
       const body = await getRequestBody()
-      expect(body.assignment).toEqual({ amount: 100 })
+      expect(body.assignment).toEqual({ type: 'Fungible', value: 100 })
     })
   })
 
@@ -265,6 +271,16 @@ describe('RlnAccount', () => {
       expect(getRequestUrl()).toContain('/lninvoice')
       const body = await getRequestBody()
       expect(body.amt_msat).toBe(100000)
+    })
+
+    test('forwards asset_id and asset_amount for an RGB-over-Lightning invoice', async () => {
+      const account = createAccount(MOCK_LN_INVOICE)
+      await account.createLNInvoice({ amtMsat: 3000000, assetId: ASSET_ID, assetAmount: 42 })
+
+      const body = await getRequestBody()
+      expect(body.asset_id).toBe(ASSET_ID)
+      expect(body.asset_amount).toBe(42)
+      expect(body.amt_msat).toBe(3000000)
     })
   })
 
@@ -280,6 +296,15 @@ describe('RlnAccount', () => {
       expect(getRequestUrl()).toContain('/sendpayment')
       const body = await getRequestBody()
       expect(body.invoice).toBe('lnbc100u1pq...')
+    })
+
+    test('forwards asset_id and asset_amount for an open-amount RGB invoice', async () => {
+      const account = createAccount(MOCK_PAYMENT)
+      await account.sendPayment({ invoice: 'lnbc1pq...', assetId: ASSET_ID, assetAmount: 7 })
+
+      const body = await getRequestBody()
+      expect(body.asset_id).toBe(ASSET_ID)
+      expect(body.asset_amount).toBe(7)
     })
   })
 
