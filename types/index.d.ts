@@ -142,6 +142,7 @@ export declare class RlnAccount {
   disconnectPeer(peerPubkey: string): Promise<void>
 
   // Atomic swaps
+  getTakerPubkey(): Promise<string>
   atomicTaker(swapstring: string): Promise<void>
   listSwaps(): Promise<{ maker: object[]; taker: object[] }>
   getSwap(options: { paymentHash: string; taker?: boolean }): Promise<{ swap?: object }>

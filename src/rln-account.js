@@ -422,11 +422,27 @@ export class RlnAccount {
   // ---------------------------------------------------------------------------
 
   /**
+   * Returns the node pubkey to use as the taker pubkey in maker execution.
+   *
+   * @returns {Promise<string>}
+   */
+  async getTakerPubkey () {
+    if (typeof this._rln.getTakerPubkey === 'function') {
+      return this._rln.getTakerPubkey()
+    }
+    const info = await this._rln.getNodeInfo()
+    return info.pubkey
+  }
+
+  /**
    * Whitelist an incoming HTLC for an atomic swap (taker side).
    *
    * @param {string} swapstring - Swapstring from atomic init
    */
   async atomicTaker (swapstring) {
+    if (typeof this._rln.whitelistSwap === 'function') {
+      return this._rln.whitelistSwap({ swapstring })
+    }
     return this._rln.taker({ swapstring })
   }
 

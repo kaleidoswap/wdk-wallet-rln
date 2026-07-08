@@ -344,6 +344,26 @@ describe('RlnAccount', () => {
   })
 
   // -------------------------------------------------------------------------
+  describe('atomic swaps', () => {
+    test('getTakerPubkey() returns the node pubkey', async () => {
+      const account = createAccount(MOCK_NODE_INFO)
+      await expect(account.getTakerPubkey()).resolves.toBe(MOCK_NODE_INFO.pubkey)
+
+      expect(getRequestUrl()).toContain('/nodeinfo')
+      expect(getRequestMethod()).toBe('GET')
+    })
+
+    test('atomicTaker() POSTs the swapstring to /taker', async () => {
+      const account = createAccount({})
+      await account.atomicTaker('swapstring-123')
+
+      expect(getRequestUrl()).toContain('/taker')
+      const body = await getRequestBody()
+      expect(body).toEqual({ swapstring: 'swapstring-123' })
+    })
+  })
+
+  // -------------------------------------------------------------------------
   describe('error handling', () => {
     test('throws on HTTP 401 with error field', async () => {
       const account = createAccountWithError(401, { error: 'Unauthorized' })
