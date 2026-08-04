@@ -344,6 +344,26 @@ describe('RlnAccount', () => {
   })
 
   // -------------------------------------------------------------------------
+  describe('atomic swaps', () => {
+    test('getTakerPubkey() returns the node pubkey', async () => {
+      const account = createAccount(MOCK_NODE_INFO)
+      await expect(account.getTakerPubkey()).resolves.toBe(MOCK_NODE_INFO.pubkey)
+
+      expect(getRequestUrl()).toContain('/nodeinfo')
+      expect(getRequestMethod()).toBe('GET')
+    })
+
+    test('atomicTaker() POSTs the swapstring to /taker', async () => {
+      const account = createAccount({})
+      await account.atomicTaker('swapstring-123')
+
+      expect(getRequestUrl()).toContain('/taker')
+      const body = await getRequestBody()
+      expect(body).toEqual({ swapstring: 'swapstring-123' })
+    })
+  })
+
+  // -------------------------------------------------------------------------
   describe('error handling', () => {
     test('throws on HTTP 401 with error field', async () => {
       const account = createAccountWithError(401, { error: 'Unauthorized' })
@@ -369,5 +389,46 @@ describe('RlnAccount', () => {
       await expect(account.listChannels())
         .rejects.toThrow()
     })
+  })
+})
+
+describe('node authentication', () => {
+  function mockFetch (...responses) {
+    let call = 0
+    globalThis.fetch = jest.fn().mockImplementation(() => {
+      const res = responses[call++]
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: { get: () => null },
+        text: () => Promise.resolve(res !== undefined ? JSON.stringify(res) : '')
+      })
+    })
+  }
+
+  test('sends Authorization: Bearer on every call when apiKey is configured', async () => {
+    mockFetch(MOCK_ADDRESS)
+    const account = new RlnAccount(NODE_URL, { apiKey: 'jwt-token-123' })
+    await account.getAddress()
+    const request = globalThis.fetch.mock.calls[0][0]
+    expect(request.headers.get('authorization')).toBe('Bearer jwt-token-123')
+  })
+
+  test('sends no Authorization header when apiKey is absent', async () => {
+    mockFetch(MOCK_ADDRESS)
+    const account = new RlnAccount(NODE_URL)
+    await account.getAddress()
+    const request = globalThis.fetch.mock.calls[0][0]
+    expect(request.headers.get('authorization')).toBeNull()
+  })
+
+  test('RlnWalletManager forwards config.apiKey to the account', async () => {
+    mockFetch(MOCK_ADDRESS)
+    const manager = new RlnWalletManager(SEED, { nodeUrl: NODE_URL, apiKey: 'jwt-token-456' })
+    const account = await manager.getAccount(0)
+    await account.getAddress()
+    const request = globalThis.fetch.mock.calls[0][0]
+    expect(request.headers.get('authorization')).toBe('Bearer jwt-token-456')
   })
 })

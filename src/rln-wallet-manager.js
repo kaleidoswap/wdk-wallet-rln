@@ -21,6 +21,7 @@ import { RlnAccount } from './rln-account.js'
 /**
  * @typedef {Object} RlnWalletConfig
  * @property {string} nodeUrl - Base URL of the RLN HTTP API (e.g. 'http://localhost:3001')
+ * @property {string} [apiKey] - Bearer token for nodes that require authentication
  */
 
 /**
@@ -42,7 +43,7 @@ export default class RlnWalletManager extends WalletManager {
 
     if (!config.nodeUrl) throw new Error('RlnWalletManager: config.nodeUrl is required')
 
-    this._account = new RlnAccount(config.nodeUrl)
+    this._account = new RlnAccount(config.nodeUrl, { apiKey: config.apiKey })
   }
 
   /**
