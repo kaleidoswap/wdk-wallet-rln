@@ -29,10 +29,21 @@ import { RlnClient } from 'kaleido-sdk/rln'
 export class RlnAccount {
   /**
    * @param {string} nodeUrl - Base URL of the RLN HTTP API (e.g. 'http://localhost:3001')
+   * @param {{ apiKey?: string }} [options] - `apiKey` is sent as `Authorization: Bearer` on every node call
    */
-  constructor (nodeUrl) {
+  constructor (nodeUrl, { apiKey } = {}) {
     const url = nodeUrl.replace(/\/$/, '')
     const http = new HttpClient({ nodeUrl: url })
+    if (apiKey) {
+      // kaleido-sdk's HttpClient applies `apiKey` to the maker client only, so
+      // the credential is injected here on the node client's request path.
+      http.node.use({
+        onRequest ({ request }) {
+          request.headers.set('authorization', `Bearer ${apiKey}`)
+          return undefined
+        }
+      })
+    }
     this._rln = new RlnClient(http)
     /** @private {null | { publicKey: Uint8Array, privateKey: null }} */
     this._keyPairCache = null

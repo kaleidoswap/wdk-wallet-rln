@@ -15,6 +15,8 @@
 export interface RlnWalletConfig {
   /** Base URL of the RLN HTTP API (e.g. 'http://localhost:3001') */
   nodeUrl: string
+  /** Bearer token for nodes that require authentication */
+  apiKey?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -94,7 +96,7 @@ export interface RlnFeeRates {
 // ---------------------------------------------------------------------------
 
 export declare class RlnAccount {
-  constructor(nodeUrl: string)
+  constructor(nodeUrl: string, options?: { apiKey?: string })
 
   // IWalletAccount compatibility
   getAddress(): Promise<string>
