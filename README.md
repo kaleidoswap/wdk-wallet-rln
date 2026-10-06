@@ -1,4 +1,4 @@
-# @kaleidoswap/wdk-wallet-rln
+# @kaleidorg/wdk-wallet-rln
 
 WDK wallet adapter for an **RGB Lightning Node (RLN)** — connects an existing RLN HTTP daemon to the WDK account model.
 
@@ -21,7 +21,7 @@ WDK host app
 ## Installation
 
 ```bash
-npm install @kaleidoswap/wdk-wallet-rln
+npm install @kaleidorg/wdk-wallet-rln
 ```
 
 Requires `@tetherto/wdk-wallet` as a peer dependency:
@@ -33,7 +33,7 @@ npm install @tetherto/wdk-wallet
 ## Usage
 
 ```js
-import RlnWalletManager from '@kaleidoswap/wdk-wallet-rln'
+import RlnWalletManager from '@kaleidorg/wdk-wallet-rln'
 
 const manager = new RlnWalletManager(null, {
   nodeUrl: 'http://localhost:3001'
@@ -144,8 +144,8 @@ Wraps the full RLN REST API surface.
 
 ```js
 import { WalletManager } from '@tetherto/wdk-wallet'
-import RlnWalletManager from '@kaleidoswap/wdk-wallet-rln'
-import KaleidoswapProtocol from '@kaleidoswap/wdk-protocol-swap-kaleidoswap'
+import RlnWalletManager from '@kaleidorg/wdk-wallet-rln'
+import KaleidoswapProtocol from '@kaleidorg/wdk-protocol-swap-kaleidoswap'
 
 // Register the wallet
 const manager = new RlnWalletManager(null, { nodeUrl: 'http://localhost:3001' })
